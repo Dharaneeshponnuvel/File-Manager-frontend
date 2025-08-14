@@ -2,14 +2,15 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 
 export default function FileManagerTable() {
-  const [items, setItems] = useState([]); // folders + loose files
+  const [items, setItems] = useState([]);
   const [expandedFolder, setExpandedFolder] = useState(null);
   const [editId, setEditId] = useState(null);
   const [editType, setEditType] = useState("");
   const [newName, setNewName] = useState("");
 
-  const API_EDIT = "http://localhost:5000/api/edit";   // edit/delete API
-  const API_SHARE = "http://localhost:5000/api/share"; // share API
+  const backendURL = process.env.REACT_APP_BACKEND_URL; // ✅ from .env
+  const API_EDIT = `${backendURL}/api/edit`;
+  const API_SHARE = `${backendURL}/api/share`;
 
   // Fetch folders + files
   const fetchItems = async () => {
@@ -19,15 +20,15 @@ export default function FileManagerTable() {
         axios.get(`${API_EDIT}/files`),
       ]);
 
-      const folders = folderRes.data.map(folder => ({
+      const folders = folderRes.data.map((folder) => ({
         ...folder,
         type: "folder",
-        files: fileRes.data.filter(file => file.folder_id === folder.id),
+        files: fileRes.data.filter((file) => file.folder_id === folder.id),
       }));
 
       const looseFiles = fileRes.data
-        .filter(file => !file.folder_id)
-        .map(file => ({ ...file, type: "files" }));
+        .filter((file) => !file.folder_id)
+        .map((file) => ({ ...file, type: "files" }));
 
       setItems([...folders, ...looseFiles]);
     } catch (err) {
@@ -39,12 +40,10 @@ export default function FileManagerTable() {
     fetchItems();
   }, []);
 
-  // Expand / collapse folder
   const toggleFolder = (folderId) => {
     setExpandedFolder(expandedFolder === folderId ? null : folderId);
   };
 
-  // Edit
   const handleEditClick = (id, type, currentName) => {
     setEditId(id);
     setEditType(type);
@@ -73,28 +72,27 @@ export default function FileManagerTable() {
     }
   };
 
-  // Share
   const handleShare = async (fileId) => {
-  try {
-    const shared_with_email = prompt("Enter the email to share with:");
-    if (!shared_with_email) return;
+    try {
+      const shared_with_email = prompt("Enter the email to share with:");
+      if (!shared_with_email) return;
 
-    const role = prompt("Enter role (viewer, editor, owner):", "viewer");
-    if (!role || !["viewer", "editor", "owner"].includes(role)) {
-      alert("Invalid role!");
-      return;
+      const role = prompt("Enter role (viewer, editor, owner):", "viewer");
+      if (!role || !["viewer", "editor", "owner"].includes(role)) {
+        alert("Invalid role!");
+        return;
+      }
+
+      await axios.post(API_SHARE, { file_id: fileId, shared_with_email, role });
+
+      const res = await axios.get(`${API_SHARE}/${fileId}/signed-url`);
+      navigator.clipboard.writeText(res.data.signedUrl);
+      alert("Share link copied to clipboard!");
+    } catch (err) {
+      console.error(err);
+      alert("Error sharing file.");
     }
-
-    await axios.post(API_SHARE, { file_id: fileId, shared_with_email, role });
-
-    const res = await axios.get(`${API_SHARE}/${fileId}/signed-url`);
-    navigator.clipboard.writeText(res.data.signedUrl);
-    alert("Share link copied to clipboard!");
-  } catch (err) {
-    console.error(err);
-    alert("Error sharing file.");
-  }
-};
+  };
 
   return (
     <div style={{ padding: "20px" }}>
@@ -134,7 +132,9 @@ export default function FileManagerTable() {
                       <button onClick={handleSaveEdit}>💾 Save</button>
                     ) : (
                       <button
-                        onClick={() => handleEditClick(item.id, "folder", item.folder_name)}
+                        onClick={() =>
+                          handleEditClick(item.id, "folder", item.folder_name)
+                        }
                       >
                         ✏ Edit
                       </button>
@@ -148,7 +148,6 @@ export default function FileManagerTable() {
                   </td>
                 </tr>
 
-                {/* Files in folder */}
                 {expandedFolder === item.id &&
                   item.files.map((file) => (
                     <tr key={`file-${file.id}`}>
@@ -211,7 +210,9 @@ export default function FileManagerTable() {
                     <button onClick={handleSaveEdit}>💾 Save</button>
                   ) : (
                     <button
-                      onClick={() => handleEditClick(item.id, "files", item.file_name)}
+                      onClick={() =>
+                        handleEditClick(item.id, "files", item.file_name)
+                      }
                     >
                       ✏ Edit
                     </button>

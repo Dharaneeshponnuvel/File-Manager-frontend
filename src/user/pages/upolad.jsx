@@ -45,7 +45,7 @@ export default function UploadFile() {
     try {
       // Use XMLHttpRequest for progress tracking
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "http://localhost:5000/api/upload");
+      xhr.open("POST", "https://file-manager-backend-1-oo16.onrender.com/api/upload");
 
       xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 

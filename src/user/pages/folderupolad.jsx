@@ -9,6 +9,8 @@ export default function FolderUpload() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
+  const backendURL = process.env.REACT_APP_BACKEND_URL; // ✅ from .env
+
   // ✅ Get user from localStorage or Supabase session
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -63,7 +65,7 @@ export default function FolderUpload() {
 
     try {
       const res = await axios.post(
-        "http://localhost:5000/api/folder/upload-folder",
+        `${backendURL}/api/folder/upload-folder`, // ✅ dynamic URL
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
