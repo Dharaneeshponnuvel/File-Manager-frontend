@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { supabase } from "../../supabase/supabaseClient";
 
+
 export default function FolderUpload() {
   const [files, setFiles] = useState([]);
   const [folderName, setFolderName] = useState("");
