@@ -1,111 +1,218 @@
-// src/user/pages/Dashboard.jsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../supabase/supabaseClient";
+import { PieChart, Pie, Cell, Legend, Tooltip } from "recharts";
+
+const FILE_LIMIT_GB = 15;
+const GB_IN_BYTES = 1024 * 1024 * 1024;
+const COLORS = ["#6366f1", "#22c55e", "#facc15", "#ef4444", "#a855f7"];
+
+function categorizeFile(fileName) {
+  if (!fileName) return "Others";
+  const ext = fileName.split(".").pop().toLowerCase();
+  if (["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext)) return "Images";
+  if (["zip", "rar", "7z"].includes(ext)) return "Zip";
+  return "Others";
+}
 
 export default function Dashboard() {
+  const [user, setUser] = useState(null);
   const [files, setFiles] = useState([]);
   const [folders, setFolders] = useState([]);
-  const [uploads, setUploads] = useState([]);
-  const [usage, setUsage] = useState({ Images: 0, Zip: 0, Others: 0, Folders: 0 });
+  const [allUploads, setAllUploads] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [usageData, setUsageData] = useState([]);
 
+  // Load user
   useEffect(() => {
-    fetchData();
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    } else {
+      supabase.auth.getUser().then(({ data, error }) => {
+        if (!error && data.user) {
+          const userData = {
+            id: data.user.id,
+            name: data.user.user_metadata?.full_name || "No Name",
+            email: data.user.email,
+          };
+          setUser(userData);
+          localStorage.setItem("user", JSON.stringify(userData));
+        }
+      });
+    }
   }, []);
 
-  const fetchData = async () => {
-    const user = (await supabase.auth.getUser()).data.user;
+  // Fetch files and folders
+  useEffect(() => {
     if (!user) return;
 
-    // ✅ Fetch files
-    const { data: fileData, error: fileError } = await supabase
-      .from("files")
-      .select("id, file_name, file_url, created_at, size, file_type")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+    const fetchData = async () => {
+      setLoading(true);
 
-    if (fileError) console.error(fileError);
-    setFiles(fileData || []);
+      const { data: fileData } = await supabase
+        .from("files")
+        .select("id, file_name, file_url, created_at, size")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
-    // ✅ Fetch folders
-    const { data: folderData, error: folderError } = await supabase
-      .from("folder")
-      .select("id, folder_name, folder_url, uploaded_at")
-      .eq("user_id", user.id)
-      .order("uploaded_at", { ascending: false });
+      const { data: folderData } = await supabase
+        .from("folder")
+        .select("id, folder_name, file_name, file_url, created_at, size")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
-    if (folderError) console.error(folderError);
-    setFolders(folderData || []);
+      setFiles(fileData || []);
+      setFolders(folderData || []);
 
-    // ✅ Merge uploads (files + folders)
-    const merged = [
-      ...(fileData || []).map((f) => ({
-        id: f.id,
-        type: "file",
-        displayName: f.file_name,
-        date: f.created_at,
-        size: f.size,
-        fileType: f.file_type,
-        url: f.file_url,
-      })),
-      ...(folderData || []).map((f) => ({
-        id: f.id,
-        type: "folder",
-        displayName: f.folder_name,
-        date: f.uploaded_at,
-        url: f.folder_url,
-      })),
-    ];
-    setUploads(merged);
+      // Merge uploads
+      const combined = [
+        ...(fileData || []).map((f) => ({
+          id: f.id,
+          type: "file",
+          displayName: f.file_name,
+          date: f.created_at,
+          url: f.file_url,
+        })),
+        ...(folderData || []).map((f) => ({
+          id: f.id,
+          type: "folder",
+          displayName: `${f.folder_name} / ${f.file_name}`,
+          date: f.created_at,
+          url: f.file_url,
+        })),
+      ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // ✅ Calculate usage
-    let usageStats = { Images: 0, Zip: 0, Others: 0, Folders: folderData?.length || 0 };
+      setAllUploads(combined);
 
-    (fileData || []).forEach((file) => {
-      if (file.file_type?.includes("image")) usageStats.Images += file.size;
-      else if (file.file_type?.includes("zip")) usageStats.Zip += file.size;
-      else usageStats.Others += file.size;
-    });
+      // Usage calc
+      let usage = { Images: 0, Zip: 0, Others: 0, Folders: 0 };
+      (fileData || []).forEach((file) => {
+        const cat = categorizeFile(file.file_name);
+        usage[cat] += file.size || 0;
+      });
+      (folderData || []).forEach((folderFile) => {
+        usage.Folders += folderFile.size || 0;
+      });
 
-    setUsage(usageStats);
-  };
+      const totalUsedBytes = usage.Images + usage.Zip + usage.Others + usage.Folders;
+      const remainingBytes = Math.max(0, FILE_LIMIT_GB * GB_IN_BYTES - totalUsedBytes);
+
+      setUsageData([
+        { name: "Images", value: usage.Images / GB_IN_BYTES },
+        { name: "Zip", value: usage.Zip / GB_IN_BYTES },
+        { name: "Others", value: usage.Others / GB_IN_BYTES },
+        { name: "Folders", value: usage.Folders / GB_IN_BYTES },
+        { name: "Remaining Space", value: remainingBytes / GB_IN_BYTES },
+      ]);
+
+      setLoading(false);
+    };
+
+    fetchData();
+  }, [user]);
+
+  if (!user) return <div className="p-4 text-center text-lg">Loading user info...</div>;
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Stats Section */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl shadow p-6 text-center">
-          <p className="text-gray-500">Images</p>
-          <h3 className="text-2xl font-bold">{(usage.Images / 1024 / 1024).toFixed(2)} MB</h3>
+    <div className="min-h-screen bg-gray-50">
+      {/* Navbar */}
+      <nav className="bg-white shadow-sm p-4 flex justify-between items-center">
+        <h1 className="text-xl font-bold text-indigo-600">📂 File Manager</h1>
+        <div className="text-sm text-gray-700">
+          {user.name} <span className="text-gray-400">({user.email})</span>
         </div>
-        <div className="bg-white rounded-xl shadow p-6 text-center">
-          <p className="text-gray-500">Zip Files</p>
-          <h3 className="text-2xl font-bold">{(usage.Zip / 1024 / 1024).toFixed(2)} MB</h3>
-        </div>
-        <div className="bg-white rounded-xl shadow p-6 text-center">
-          <p className="text-gray-500">Others</p>
-          <h3 className="text-2xl font-bold">{(usage.Others / 1024 / 1024).toFixed(2)} MB</h3>
-        </div>
-        <div className="bg-white rounded-xl shadow p-6 text-center">
-          <p className="text-gray-500">Folders</p>
-          <h3 className="text-2xl font-bold">{usage.Folders}</h3>
-        </div>
-      </div>
+      </nav>
 
-      {/* Recent Uploads */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <h2 className="text-xl font-bold mb-4">Recent Uploads</h2>
-        <ul className="divide-y divide-gray-200">
-          {uploads.map((item) => (
-            <li key={item.id} className="py-3 flex justify-between items-center">
-              <span>
-                {item.type === "folder" ? "📁" : "📄"} {item.displayName}
-              </span>
-              <span className="text-sm text-gray-500">{new Date(item.date).toLocaleString()}</span>
-            </li>
-          ))}
-        </ul>
-        {uploads.length === 0 && <p className="text-gray-400 text-center">No uploads yet.</p>}
-      </div>
+      <main className="p-6 max-w-7xl mx-auto">
+        {/* Welcome */}
+        <h2 className="text-2xl font-semibold mb-6">Welcome back, {user.name} 👋</h2>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white rounded-xl shadow p-6 text-center">
+            <p className="text-gray-500">Files</p>
+            <h3 className="text-2xl font-bold">{files.length}</h3>
+          </div>
+          <div className="bg-white rounded-xl shadow p-6 text-center">
+            <p className="text-gray-500">Folders</p>
+            <h3 className="text-2xl font-bold">{folders.length}</h3>
+          </div>
+          <div className="bg-white rounded-xl shadow p-6 text-center">
+            <p className="text-gray-500">Storage Used</p>
+            <h3 className="text-2xl font-bold">
+              {usageData.reduce((acc, d) => (d.name !== "Remaining Space" ? acc + d.value : acc), 0).toFixed(2)} GB
+            </h3>
+          </div>
+        </div>
+
+        {/* Storage Usage */}
+        <div className="bg-white rounded-xl shadow p-6 mb-8">
+          <h3 className="text-lg font-semibold mb-4">Storage Usage (15 GB limit)</h3>
+          {loading ? (
+            <p>Loading usage data...</p>
+          ) : (
+            <div className="flex justify-center">
+              <PieChart width={500} height={350}>
+                <Pie
+                  data={usageData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={120}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                >
+                  {usageData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => `${value.toFixed(2)} GB`} />
+                <Legend />
+              </PieChart>
+            </div>
+          )}
+        </div>
+
+        {/* Uploads Table */}
+        <div className="bg-white rounded-xl shadow p-6">
+          <h3 className="text-lg font-semibold mb-4">All Uploads</h3>
+          {loading && <p>Loading uploads...</p>}
+          {!loading && allUploads.length === 0 && <p>No uploads yet.</p>}
+          {!loading && allUploads.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-700">
+                    <th className="p-3 text-left">Type</th>
+                    <th className="p-3 text-left">Name</th>
+                    <th className="p-3 text-left">Upload Date</th>
+                    <th className="p-3 text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allUploads.map((item) => (
+                    <tr key={item.id} className="border-t hover:bg-gray-50">
+                      <td className="p-3 capitalize">{item.type}</td>
+                      <td className="p-3">{item.displayName}</td>
+                      <td className="p-3">{new Date(item.date).toLocaleString()}</td>
+                      <td className="p-3">
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:underline"
+                        >
+                          View / Download
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
