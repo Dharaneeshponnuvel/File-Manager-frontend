@@ -50,8 +50,9 @@ export default function Dashboard() {
       // ✅ Files
       const { data: fileData } = await supabase
         .from("files")
-        .select("id, file_name, size")
-        .eq("user_id", user.id);
+        .select("id, file_name, size, created_at, file_url")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
       // ✅ Folders (just count)
       const { data: folderData } = await supabase
@@ -63,7 +64,7 @@ export default function Dashboard() {
       setFolders(folderData || []);
 
       // ✅ Usage calculation
-      let usage = { Images: 0, Zip: 0, Others: 0, Folders: folderData?.length || 0 };
+      let usage = { Images: 0, Zip: 0, Others: 0 };
 
       (fileData || []).forEach((file) => {
         const cat = categorizeFile(file.file_name);
@@ -73,11 +74,11 @@ export default function Dashboard() {
       const totalUsedBytes = usage.Images + usage.Zip + usage.Others;
       const remainingBytes = Math.max(0, FILE_LIMIT_GB * GB_IN_BYTES - totalUsedBytes);
 
+      // ✅ Folders excluded from graph
       setUsageData([
         { name: "Images", value: usage.Images / GB_IN_BYTES },
         { name: "Zip", value: usage.Zip / GB_IN_BYTES },
         { name: "Others", value: usage.Others / GB_IN_BYTES },
-        { name: "Folders", value: usage.Folders }, // ✅ only count
         { name: "Remaining Space", value: remainingBytes / GB_IN_BYTES },
       ]);
 
@@ -116,7 +117,7 @@ export default function Dashboard() {
             <p className="text-gray-500">Storage Used</p>
             <h3 className="text-2xl font-bold">
               {usageData
-                .filter((d) => d.name !== "Remaining Space" && d.name !== "Folders")
+                .filter((d) => d.name !== "Remaining Space")
                 .reduce((acc, d) => acc + d.value, 0)
                 .toFixed(2)}{" "}
               GB
@@ -147,13 +148,53 @@ export default function Dashboard() {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip
-                  formatter={(value, name) =>
-                    name === "Folders" ? `${value} folders` : `${value.toFixed(2)} GB`
-                  }
-                />
+                <Tooltip formatter={(value, name) => `${value.toFixed(2)} GB`} />
                 <Legend />
               </PieChart>
+            </div>
+          )}
+        </div>
+
+        {/* 📋 File Details Table */}
+        <div className="bg-white rounded-xl shadow p-6">
+          <h3 className="text-lg font-semibold mb-4">File Details</h3>
+          {loading ? (
+            <p>Loading files...</p>
+          ) : files.length === 0 ? (
+            <p>No files uploaded yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-700">
+                    <th className="p-3 text-left">S.No</th>
+                    <th className="p-3 text-left">Name</th>
+                    <th className="p-3 text-left">Upload Date</th>
+                    <th className="p-3 text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {files.map((file, index) => (
+                    <tr key={file.id} className="border-t hover:bg-gray-50">
+                      <td className="p-3">{index + 1}</td>
+                      <td className="p-3">{file.file_name}</td>
+                      <td className="p-3">
+                        {new Date(file.created_at).toLocaleString()}
+                      </td>
+                      <td className="p-3">
+                        <a
+                          href={file.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:underline"
+                        >
+                          View / Download
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
