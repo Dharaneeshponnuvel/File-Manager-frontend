@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, Legend, Tooltip } from "recharts";
 
 const FILE_LIMIT_GB = 15;
 const GB_IN_BYTES = 1024 * 1024 * 1024;
-const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#d0ed57", "#a4de6c"];
+const COLORS = ["#6366f1", "#22c55e", "#facc15", "#ef4444", "#a855f7"];
 
 function categorizeFile(fileName) {
   if (!fileName) return "Others";
@@ -49,25 +49,22 @@ export default function Dashboard() {
     const fetchData = async () => {
       setLoading(true);
 
-      const { data: fileData, error: fileError } = await supabase
+      const { data: fileData } = await supabase
         .from("files")
         .select("id, file_name, file_url, created_at, size")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      const { data: folderData, error: folderError } = await supabase
+      const { data: folderData } = await supabase
         .from("folder")
         .select("id, folder_name, file_name, file_url, created_at, size")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      if (fileError) console.error("Error fetching files:", fileError);
-      if (folderError) console.error("Error fetching folders:", folderError);
-
       setFiles(fileData || []);
       setFolders(folderData || []);
 
-      // Merge for combined display
+      // Merge uploads
       const combined = [
         ...(fileData || []).map((f) => ({
           id: f.id,
@@ -87,7 +84,7 @@ export default function Dashboard() {
 
       setAllUploads(combined);
 
-      // Calculate usage
+      // Usage calc
       let usage = { Images: 0, Zip: 0, Others: 0, Folders: 0 };
       (fileData || []).forEach((file) => {
         const cat = categorizeFile(file.file_name);
@@ -114,76 +111,108 @@ export default function Dashboard() {
     fetchData();
   }, [user]);
 
-  if (!user) return <div className="p-4">Loading user info...</div>;
+  if (!user) return <div className="p-4 text-center text-lg">Loading user info...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-      <div className="bg-white p-6 rounded shadow-md w-full max-w-6xl">
-        <h1 className="text-2xl font-bold mb-4">Welcome to Dashboard</h1>
-        <p><strong>User ID:</strong> {user.id}</p>
-        <p><strong>Name:</strong> {user.name}</p>
-        <p><strong>Email:</strong> {user.email}</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Navbar */}
+      <nav className="bg-white shadow-sm p-4 flex justify-between items-center">
+        <h1 className="text-xl font-bold text-indigo-600">📂 File Manager</h1>
+        <div className="text-sm text-gray-700">
+          {user.name} <span className="text-gray-400">({user.email})</span>
+        </div>
+      </nav>
 
-        {/* Storage Pie Chart */}
-        <div className="my-6">
-          <h2 className="text-xl font-semibold mb-4">Storage Usage (15 GB limit)</h2>
+      <main className="p-6 max-w-7xl mx-auto">
+        {/* Welcome */}
+        <h2 className="text-2xl font-semibold mb-6">Welcome back, {user.name} 👋</h2>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white rounded-xl shadow p-6 text-center">
+            <p className="text-gray-500">Files</p>
+            <h3 className="text-2xl font-bold">{files.length}</h3>
+          </div>
+          <div className="bg-white rounded-xl shadow p-6 text-center">
+            <p className="text-gray-500">Folders</p>
+            <h3 className="text-2xl font-bold">{folders.length}</h3>
+          </div>
+          <div className="bg-white rounded-xl shadow p-6 text-center">
+            <p className="text-gray-500">Storage Used</p>
+            <h3 className="text-2xl font-bold">
+              {usageData.reduce((acc, d) => (d.name !== "Remaining Space" ? acc + d.value : acc), 0).toFixed(2)} GB
+            </h3>
+          </div>
+        </div>
+
+        {/* Storage Usage */}
+        <div className="bg-white rounded-xl shadow p-6 mb-8">
+          <h3 className="text-lg font-semibold mb-4">Storage Usage (15 GB limit)</h3>
           {loading ? (
             <p>Loading usage data...</p>
-          ) : usageData.length === 0 ? (
-            <p>No usage data available.</p>
           ) : (
-            <PieChart width={500} height={350}>
-              <Pie
-                data={usageData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={120}
-                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
-              >
-                {usageData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value) => `${value.toFixed(2)} GB`} />
-              <Legend />
-            </PieChart>
+            <div className="flex justify-center">
+              <PieChart width={500} height={350}>
+                <Pie
+                  data={usageData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={120}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                >
+                  {usageData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => `${value.toFixed(2)} GB`} />
+                <Legend />
+              </PieChart>
+            </div>
           )}
         </div>
 
-        {/* Combined Uploads Table */}
-        <hr className="my-6" />
-        <h2 className="text-xl font-semibold mb-4">All Uploads</h2>
-        {loading && <p>Loading uploads...</p>}
-        {!loading && allUploads.length === 0 && <p>No uploads yet.</p>}
-        {!loading && allUploads.length > 0 && (
-          <table className="min-w-full border border-gray-300 mb-6">
-            <thead>
-              <tr className="bg-gray-200 text-left">
-                <th className="p-3 border border-gray-300">Type</th>
-                <th className="p-3 border border-gray-300">Name</th>
-                <th className="p-3 border border-gray-300">Upload Date</th>
-                <th className="p-3 border border-gray-300">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allUploads.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-100">
-                  <td className="p-3 border border-gray-300 capitalize">{item.type}</td>
-                  <td className="p-3 border border-gray-300">{item.displayName}</td>
-                  <td className="p-3 border border-gray-300">{new Date(item.date).toLocaleString()}</td>
-                  <td className="p-3 border border-gray-300">
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                      View / Download
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+        {/* Uploads Table */}
+        <div className="bg-white rounded-xl shadow p-6">
+          <h3 className="text-lg font-semibold mb-4">All Uploads</h3>
+          {loading && <p>Loading uploads...</p>}
+          {!loading && allUploads.length === 0 && <p>No uploads yet.</p>}
+          {!loading && allUploads.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-700">
+                    <th className="p-3 text-left">Type</th>
+                    <th className="p-3 text-left">Name</th>
+                    <th className="p-3 text-left">Upload Date</th>
+                    <th className="p-3 text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allUploads.map((item) => (
+                    <tr key={item.id} className="border-t hover:bg-gray-50">
+                      <td className="p-3 capitalize">{item.type}</td>
+                      <td className="p-3">{item.displayName}</td>
+                      <td className="p-3">{new Date(item.date).toLocaleString()}</td>
+                      <td className="p-3">
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:underline"
+                        >
+                          View / Download
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
