@@ -18,7 +18,6 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [files, setFiles] = useState([]);
   const [folders, setFolders] = useState([]);
-  const [allUploads, setAllUploads] = useState([]);
   const [loading, setLoading] = useState(false);
   const [usageData, setUsageData] = useState([]);
 
@@ -45,69 +44,45 @@ export default function Dashboard() {
   // Fetch files and folders
   useEffect(() => {
     if (!user) return;
-
     const fetchData = async () => {
       setLoading(true);
 
+      // ✅ Files
       const { data: fileData } = await supabase
         .from("files")
-        .select("id, file_name, file_url, created_at, size")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+        .select("id, file_name, size")
+        .eq("user_id", user.id);
 
+      // ✅ Folders (just count)
       const { data: folderData } = await supabase
         .from("folder")
-        .select("id, folder_name, file_name, file_url, created_at, size")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+        .select("id")
+        .eq("user_id", user.id);
 
       setFiles(fileData || []);
       setFolders(folderData || []);
 
-      // Merge uploads
-      const combined = [
-        ...(fileData || []).map((f) => ({
-          id: f.id,
-          type: "file",
-          displayName: f.file_name,
-          date: f.created_at,
-          url: f.file_url,
-        })),
-        ...(folderData || []).map((f) => ({
-          id: f.id,
-          type: "folder",
-          displayName: `${f.folder_name} / ${f.file_name}`,
-          date: f.created_at,
-          url: f.file_url,
-        })),
-      ].sort((a, b) => new Date(b.date) - new Date(a.date));
+      // ✅ Usage calculation
+      let usage = { Images: 0, Zip: 0, Others: 0, Folders: folderData?.length || 0 };
 
-      setAllUploads(combined);
-
-      // Usage calc
-      let usage = { Images: 0, Zip: 0, Others: 0, Folders: 0 };
       (fileData || []).forEach((file) => {
         const cat = categorizeFile(file.file_name);
         usage[cat] += file.size || 0;
       });
-      (folderData || []).forEach((folderFile) => {
-        usage.Folders += folderFile.size || 0;
-      });
 
-      const totalUsedBytes = usage.Images + usage.Zip + usage.Others + usage.Folders;
+      const totalUsedBytes = usage.Images + usage.Zip + usage.Others;
       const remainingBytes = Math.max(0, FILE_LIMIT_GB * GB_IN_BYTES - totalUsedBytes);
 
       setUsageData([
         { name: "Images", value: usage.Images / GB_IN_BYTES },
         { name: "Zip", value: usage.Zip / GB_IN_BYTES },
         { name: "Others", value: usage.Others / GB_IN_BYTES },
-        { name: "Folders", value: usage.Folders / GB_IN_BYTES },
+        { name: "Folders", value: usage.Folders }, // ✅ only count
         { name: "Remaining Space", value: remainingBytes / GB_IN_BYTES },
       ]);
 
       setLoading(false);
     };
-
     fetchData();
   }, [user]);
 
@@ -140,7 +115,11 @@ export default function Dashboard() {
           <div className="bg-white rounded-xl shadow p-6 text-center">
             <p className="text-gray-500">Storage Used</p>
             <h3 className="text-2xl font-bold">
-              {usageData.reduce((acc, d) => (d.name !== "Remaining Space" ? acc + d.value : acc), 0).toFixed(2)} GB
+              {usageData
+                .filter((d) => d.name !== "Remaining Space" && d.name !== "Folders")
+                .reduce((acc, d) => acc + d.value, 0)
+                .toFixed(2)}{" "}
+              GB
             </h3>
           </div>
         </div>
@@ -160,55 +139,21 @@ export default function Dashboard() {
                   cx="50%"
                   cy="50%"
                   outerRadius={120}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                  label={({ name, percent }) =>
+                    `${name}: ${(percent * 100).toFixed(1)}%`
+                  }
                 >
                   {usageData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => `${value.toFixed(2)} GB`} />
+                <Tooltip
+                  formatter={(value, name) =>
+                    name === "Folders" ? `${value} folders` : `${value.toFixed(2)} GB`
+                  }
+                />
                 <Legend />
               </PieChart>
-            </div>
-          )}
-        </div>
-
-        {/* Uploads Table */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">All Uploads</h3>
-          {loading && <p>Loading uploads...</p>}
-          {!loading && allUploads.length === 0 && <p>No uploads yet.</p>}
-          {!loading && allUploads.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
-                <thead>
-                  <tr className="bg-gray-100 text-gray-700">
-                    <th className="p-3 text-left">Type</th>
-                    <th className="p-3 text-left">Name</th>
-                    <th className="p-3 text-left">Upload Date</th>
-                    <th className="p-3 text-left">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allUploads.map((item) => (
-                    <tr key={item.id} className="border-t hover:bg-gray-50">
-                      <td className="p-3 capitalize">{item.type}</td>
-                      <td className="p-3">{item.displayName}</td>
-                      <td className="p-3">{new Date(item.date).toLocaleString()}</td>
-                      <td className="p-3">
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-600 hover:underline"
-                        >
-                          View / Download
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           )}
         </div>
