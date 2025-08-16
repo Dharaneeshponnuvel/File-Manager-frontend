@@ -1,4 +1,4 @@
-give tailwen css for this code import React, { useState } from "react";
+import React, { useState } from "react";
 import { supabase } from "../supabase/supabaseClient";
 
 export default function Signup() {
