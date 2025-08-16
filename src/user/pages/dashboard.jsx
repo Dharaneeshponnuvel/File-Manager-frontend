@@ -1,6 +1,6 @@
 // src/user/pages/Dashboard.jsx
 import React, { useEffect, useState } from "react";
-import { supabase } from "../../supabaseClient";
+import { supabase } from "../../supabase/supabaseClient";
 
 export default function Dashboard() {
   const [files, setFiles] = useState([]);
