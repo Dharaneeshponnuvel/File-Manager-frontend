@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import LoadingScreen from "./LoadingScreen"; // ✅ adjust the path
 
 export default function FileManagerTable() {
   const [items, setItems] = useState([]);
@@ -57,7 +58,9 @@ export default function FileManagerTable() {
   const handleSaveEdit = async () => {
     if (!newName.trim()) return;
     try {
-      await axios.put(`${API_EDIT}/${editType}/${editId}`, { new_name: newName });
+      await axios.put(`${API_EDIT}/${editType}/${editId}`, {
+        new_name: newName,
+      });
       setEditId(null);
       setNewName("");
       fetchItems();
@@ -102,11 +105,8 @@ export default function FileManagerTable() {
     <div style={{ padding: "20px" }}>
       <h2>📂 File Manager</h2>
 
-      {loading ? ( // ✅ Show loader while fetching
-        <div style={{ textAlign: "center", padding: "40px" }}>
-          <h3>Loading files & folders...</h3>
-          <div className="loader"></div> {/* replace with your loading screen */}
-        </div>
+      {loading ? (
+        <LoadingScreen message="Loading files & folders..." /> // ✅ replace old loader
       ) : (
         <table border="1" cellPadding="10" style={{ width: "100%" }}>
           <thead>
@@ -144,7 +144,11 @@ export default function FileManagerTable() {
                       ) : (
                         <button
                           onClick={() =>
-                            handleEditClick(item.id, "folder", item.folder_name)
+                            handleEditClick(
+                              item.id,
+                              "folder",
+                              item.folder_name
+                            )
                           }
                         >
                           ✏ Edit
@@ -180,7 +184,11 @@ export default function FileManagerTable() {
                           ) : (
                             <button
                               onClick={() =>
-                                handleEditClick(file.id, "files", file.file_name)
+                                handleEditClick(
+                                  file.id,
+                                  "files",
+                                  file.file_name
+                                )
                               }
                             >
                               ✏ Edit
