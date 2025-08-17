@@ -13,6 +13,7 @@ export default function UploadFile() {
     setMessage("");
     setProgress(0);
   };
+const backendURL = process.env.REACT_APP_BACKEND_URL; 
 
   // Get token helper
   const getToken = async () => {
@@ -46,7 +47,7 @@ export default function UploadFile() {
     try {
       // Use XMLHttpRequest for progress tracking
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "https://file-manager-backend-1-oo16.onrender.com/api/upload");
+     xhr.open("POST",  `${backendURL}/api/upload`);
 
       xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
