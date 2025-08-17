@@ -10,7 +10,7 @@ export default function Landing() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${process.env.REACT_APP_FRONTEND_URL}/profile-setup`,
+         redirectTo: `https://file-manager-frontend-swart.vercel.app/profile-setup`,
       },
     });
     if (error) setMessage(error.message);
